@@ -26,3 +26,18 @@ export async function seedDemo() {
   const res = await api.post("/seed");
   return res.data;
 }
+
+export async function simulateDatadogAlert() {
+  const payload = {
+    title: "High CPU usage on prod-server-01",
+    text: "CPU usage above 95% for 5 minutes",
+    alert_type: "error",
+    priority: "P1",
+    host: "prod-server-01",
+    monitor_name: "CPU Threshold Monitor",
+    monitor_id: 12345,
+    event_type: "triggered"
+  };
+  const res = await api.post("/monitoring/datadog", payload);
+  return res.data;
+}

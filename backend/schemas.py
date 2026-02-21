@@ -20,6 +20,9 @@ class TicketOut(BaseModel):
     reporter: str
     department: str
 
+    source: str
+    metadata: Optional[Any] = None
+
     severity: str
     confidence: float
     assigned_team: str
@@ -45,6 +48,7 @@ class DashboardMetrics(BaseModel):
     total_tickets: int
     escalated_tickets: int
     duplicate_tickets: int
+    monitoring_tickets: int
     duplicate_tickets_prevented: int
     estimated_engineer_hours_saved: float
     by_severity: list[dict]

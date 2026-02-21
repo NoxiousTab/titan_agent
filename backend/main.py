@@ -5,7 +5,7 @@ from collections import Counter
 from typing import Any, List, Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from ai_engine import load_rulebook, triage_ticket
 from database import Base, engine, get_db
 from escalation import escalate_if_needed
+from monitoring import MonitoringPayloadError, parse_datadog_alert
 from models import Ticket
 from schemas import DashboardMetrics, SeedResponse, TicketCreate, TicketOut, TicketStatusUpdate
 from seed import seed_demo_tickets
@@ -36,6 +37,14 @@ def _migrate_sqlite() -> None:
                     "ALTER TABLE tickets ADD COLUMN lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'RECEIVED'"
                 )
             )
+            conn.commit()
+
+        if "source" not in col_names:
+            conn.execute(text("ALTER TABLE tickets ADD COLUMN source VARCHAR(30) NOT NULL DEFAULT 'manual'"))
+            conn.commit()
+
+        if "metadata" not in col_names:
+            conn.execute(text("ALTER TABLE tickets ADD COLUMN metadata JSON"))
             conn.commit()
 
 
@@ -64,6 +73,9 @@ def _to_out(ticket: Ticket, ai_reasoning: Optional[str] = None, decision_trace: 
         description=ticket.description,
         reporter=ticket.reporter,
         department=ticket.department,
+
+        source=getattr(ticket, "source", "manual"),
+        metadata=getattr(ticket, "alert_metadata", None),
         severity=ticket.severity,
         confidence=ticket.confidence,
         assigned_team=ticket.assigned_team,
@@ -188,6 +200,75 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
     return _to_out(ticket, ai_reasoning=str(ai.get("reasoning", "")), decision_trace=decision_trace)
 
 
+@app.post("/monitoring/datadog", response_model=TicketOut)
+async def ingest_datadog_alert(request: Request, db: Session = Depends(get_db)) -> TicketOut:
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Malformed JSON payload")
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object")
+
+    try:
+        title, description, metadata, force_p1 = parse_datadog_alert(payload)
+    except MonitoringPayloadError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Datadog payload")
+
+    try:
+        ai = triage_ticket(title, description)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Triage failed")
+
+    if force_p1:
+        ai = dict(ai)
+        ai["severity"] = "P1"
+        ai["confidence"] = max(float(ai.get("confidence", 0.75)), 0.9)
+        ai["reasoning"] = "Datadog P1 override: critical monitoring alert triggered."
+
+    is_dup, dup_id, sim = detect_duplicate(db, title, description, threshold=0.85)
+
+    ticket = Ticket(
+        title=title,
+        description=description,
+        reporter="Datadog Monitor",
+        department="Infrastructure",
+        severity=ai["severity"],
+        confidence=float(ai["confidence"]),
+        assigned_team=ai["assigned_team"],
+        suggested_fixes=ai["suggested_fixes"],
+        is_duplicate=bool(is_dup),
+        duplicate_ticket_id=dup_id,
+        similarity_score=float(sim),
+        escalated=False,
+        jira_issue_key=None,
+        lifecycle_status="TRIAGED",
+        source="datadog",
+        alert_metadata=metadata,
+    )
+
+    db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
+
+    if ticket.severity == "P1" and not ticket.is_duplicate:
+        ticket = escalate_if_needed(db, ticket)
+
+    decision_trace = _build_decision_trace(
+        title=ticket.title,
+        description=ticket.description,
+        assigned_team=ticket.assigned_team,
+        severity=ticket.severity,
+        similarity_score=ticket.similarity_score,
+        escalated=ticket.escalated,
+        triage_source=str(ai.get("triage_source", "")) or None,
+    )
+
+    return _to_out(ticket, ai_reasoning=str(ai.get("reasoning", "")), decision_trace=decision_trace)
+
+
 @app.patch("/tickets/{ticket_id}/status", response_model=TicketOut)
 def update_ticket_status(ticket_id: int, payload: TicketStatusUpdate, db: Session = Depends(get_db)) -> TicketOut:
     t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
@@ -213,6 +294,7 @@ def dashboard_metrics(db: Session = Depends(get_db)) -> DashboardMetrics:
     total = len(tickets)
     escalated = sum(1 for t in tickets if t.escalated)
     duplicates = sum(1 for t in tickets if t.is_duplicate)
+    monitoring = sum(1 for t in tickets if getattr(t, "source", "manual") == "datadog")
 
     severity_counts = Counter([t.severity for t in tickets])
     team_counts = Counter([t.assigned_team for t in tickets])
@@ -228,6 +310,7 @@ def dashboard_metrics(db: Session = Depends(get_db)) -> DashboardMetrics:
         total_tickets=total,
         escalated_tickets=escalated,
         duplicate_tickets=duplicates,
+        monitoring_tickets=monitoring,
         duplicate_tickets_prevented=prevented,
         estimated_engineer_hours_saved=hours_saved,
         by_severity=by_severity,

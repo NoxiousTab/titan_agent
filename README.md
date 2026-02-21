@@ -127,6 +127,38 @@ If missing, webhook trigger is skipped safely.
 
 ---
 
+## Monitoring Integration
+
+The backend can ingest **Datadog-style monitor alerts** via webhook and automatically generate tickets that flow through the full triage pipeline:
+
+- Converts monitoring alerts into internal tickets (`source=datadog`)
+- Runs AI triage + routing + fix suggestions
+- Deduplicates repeated alerts using semantic similarity (threshold 0.85)
+- Escalates critical infrastructure alerts (P1) and triggers Jira + n8n (if configured)
+
+### Datadog webhook setup
+
+In **Datadog Monitor**:
+
+- Go to **Notification** → **Webhooks**
+- Set URL:
+  - `http://your-backend-url/monitoring/datadog`
+- Method:
+  - `POST`
+- Headers:
+  - `Content-Type: application/json`
+
+### Supported payload fields
+
+The endpoint supports (at minimum):
+
+- `title` (required)
+- `text` (required)
+- `alert_type`, `priority`, `event_type` (used for P1 override)
+- `host`, `monitor_name`, `monitor_id`, `date` (stored in metadata / appended to description)
+
+---
+
 ## Demo Walkthrough Script (Hackathon-ready)
 
 1. Start backend + frontend.

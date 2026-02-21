@@ -12,12 +12,14 @@ import {
   YAxis
 } from "recharts";
 import MetricsCards from "../components/MetricsCards.jsx";
-import { getMetrics, seedDemo } from "../services/api.js";
+import TicketCard from "../components/TicketCard.jsx";
+import { getMetrics, seedDemo, simulateDatadogAlert } from "../services/api.js";
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [lastAlertTicket, setLastAlertTicket] = useState(null);
 
   async function refresh() {
     setError("");
@@ -70,6 +72,22 @@ export default function Dashboard() {
           >
             Refresh
           </button>
+          <button
+            onClick={async () => {
+              setError("");
+              setLastAlertTicket(null);
+              try {
+                const t = await simulateDatadogAlert();
+                setLastAlertTicket(t);
+                await refresh();
+              } catch (e) {
+                setError(e?.response?.data?.detail || "Datadog simulation failed.");
+              }
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+          >
+            Simulate Datadog Alert
+          </button>
         </div>
       </div>
 
@@ -86,6 +104,17 @@ export default function Dashboard() {
       ) : metrics ? (
         <>
           <MetricsCards metrics={metrics} />
+
+          {lastAlertTicket ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                Latest Monitoring Alert
+              </h2>
+              <div className="mt-4">
+                <TicketCard ticket={lastAlertTicket} />
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">

@@ -6,7 +6,14 @@ export default function TicketCard({ ticket }) {
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-semibold">{ticket.title}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-semibold">{ticket.title}</div>
+            {ticket.source === "datadog" ? (
+              <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                Monitoring Alert
+              </span>
+            ) : null}
+          </div>
           <SeverityBadge severity={ticket.severity} />
         </div>
         <div className="mt-2 text-xs text-slate-600 dark:text-slate-300">

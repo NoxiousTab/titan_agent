@@ -30,6 +30,7 @@ export default function MetricsCards({ metrics }) {
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Card title="Total Tickets" value={metrics.total_tickets} subtitle="All submitted incidents & requests" />
       <Card title="Escalated Tickets" value={metrics.escalated_tickets} subtitle="Auto-escalated P1 incidents" />
+      <Card title="Monitoring Tickets" value={metrics.monitoring_tickets || 0} subtitle="Generated from Datadog alerts" />
       <Card
         title="Duplicate Tickets Prevented"
         value={metrics.duplicate_tickets_prevented}

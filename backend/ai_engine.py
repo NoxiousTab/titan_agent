@@ -201,7 +201,7 @@ Return STRICT JSON ONLY (no markdown, no extra keys) in this schema:
 }}
 
 Constraints:
-- If the text indicates production down/system outage/data breach/security incident/DoS/DDoS => severity must be P1.
+- If the text indicates production down/system outage/data breach/security incident => severity must be P1.
 - confidence must be a float between 0 and 1.
 - reasoning must be <= 25 words.
 - suggested_fixes must contain 3 to 5 short actionable steps.
@@ -254,7 +254,6 @@ Description: {description}
             "severity": severity,
             "confidence": confidence,
             "reasoning": reasoning,
-            "triage_source": "rulebook_ai_error",
             "assigned_team": team,
             "suggested_fixes": _fix_suggestions_rule_based(team, severity, rulebook),
         }
