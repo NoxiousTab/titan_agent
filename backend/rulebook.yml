@@ -1,0 +1,123 @@
+overrides:
+  p1_phrases:
+    - production down
+    - data breach
+    - security incident
+    - system outage
+
+routing:
+  teams:
+    - Network Team
+    - DevOps
+    - Application Support
+    - Database Team
+    - Security Team
+    - Access Management
+  rules:
+    Network Team:
+      - vpn
+      - tunnel
+      - ipsec
+      - wireguard
+      - dns
+      - packet loss
+      - latency
+    DevOps:
+      - kubernetes
+      - docker
+      - ci/cd
+      - pipeline
+      - deployment
+      - helm
+      - autoscaling
+    Database Team:
+      - sql
+      - database
+      - postgres
+      - postgresql
+      - mysql
+      - slow query
+      - index
+      - deadlock
+      - lock wait
+    Security Team:
+      - breach
+      - malware
+      - phishing
+      - ransomware
+      - unauthorized
+      - suspicious
+      - leak
+    Access Management:
+      - password reset
+      - locked out
+      - mfa
+      - 2fa
+      - access
+      - permission
+      - role
+    Application Support: []
+
+severity:
+  signals:
+    P1:
+      - outage
+      - down
+      - can't access
+      - unable to login company-wide
+      - sev1
+      - critical
+    P2:
+      - degraded
+      - major
+      - intermittent
+      - timeouts
+      - high latency
+      - many users
+    P3:
+      - single user
+      - minor
+      - workaround
+      - low impact
+      - bug
+      - error
+    P4:
+      - how to
+      - request
+      - password reset
+      - access request
+      - inquiry
+
+fixes:
+  base:
+    - Confirm the exact error message and time of occurrence.
+    - Check if the issue is reproducible and affects multiple users or only one.
+    - Collect basic diagnostics (screenshots/log snippets) and note recent changes.
+  by_team:
+    Network Team:
+      - Verify connectivity (ping/traceroute) to the affected host/service.
+      - Check VPN client status, route tables, and DNS resolution.
+      - Validate firewall/security group rules for recent changes.
+    DevOps:
+      - Check recent deployments and rollbacks in the last 2 hours.
+      - Inspect service health (pods/containers) and restart failing instances.
+      - Review CPU/memory saturation and autoscaling events.
+    Application Support:
+      - Confirm the impacted feature and affected user roles.
+      - Check application logs for exceptions around the timestamp.
+      - Attempt cache clear/session reset and re-test.
+    Database Team:
+      - Check DB health metrics (connections, locks, replication lag).
+      - Identify slow queries and validate indexes for affected tables.
+      - Confirm recent schema/migration changes and roll back if needed.
+    Security Team:
+      - Quarantine impacted endpoint/user account and rotate credentials if needed.
+      - Review security alerts (EDR/SIEM) for correlated indicators.
+      - Preserve evidence and escalate per incident response playbook.
+    Access Management:
+      - Confirm user identity and required access level/role.
+      - Check account lock status, MFA status, and password policy compliance.
+      - Re-sync directory/group membership and retry login.
+  p1_addendum:
+    - Open a live incident bridge and post updates every 15 minutes.
+    - Declare incident and assign an incident commander.
