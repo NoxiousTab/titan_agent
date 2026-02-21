@@ -48,6 +48,12 @@ routing:
       - unauthorized
       - suspicious
       - leak
+      - ddos
+      - dos
+      - denial of service
+      - traffic spike
+      - botnet
+      - waf
     Access Management:
       - password reset
       - locked out
@@ -67,6 +73,11 @@ severity:
       - unable to login company-wide
       - sev1
       - critical
+      - ddos
+      - dos
+      - denial of service
+      - data exfiltration
+      - account takeover
     P2:
       - degraded
       - major

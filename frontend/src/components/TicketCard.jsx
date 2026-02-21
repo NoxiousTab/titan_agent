@@ -13,6 +13,8 @@ export default function TicketCard({ ticket }) {
           Confidence: <span className="font-semibold">{(ticket.confidence * 100).toFixed(0)}%</span>
           {" · "}
           Assigned team: <span className="font-semibold">{ticket.assigned_team}</span>
+          {" · "}
+          Status: <span className="font-semibold">{ticket.lifecycle_status || "TRIAGED"}</span>
         </div>
 
         {ticket.ai_reasoning ? (
@@ -22,6 +24,38 @@ export default function TicketCard({ ticket }) {
             </div>
             <div className="mt-1">{ticket.ai_reasoning}</div>
           </div>
+        ) : null}
+
+        {ticket.decision_trace ? (
+          <details className="mt-3 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              AI Decision Trace
+            </summary>
+            <div className="mt-3 space-y-1 text-sm">
+              {ticket.decision_trace.triage_source ? (
+                <div>
+                  <span className="font-semibold">Triage source:</span> {ticket.decision_trace.triage_source}
+                </div>
+              ) : null}
+              <div>
+                <span className="font-semibold">Signals detected:</span>{" "}
+                {ticket.decision_trace.signals_detected ? `"${ticket.decision_trace.signals_detected}"` : "N/A"}
+              </div>
+              <div>
+                <span className="font-semibold">Severity logic:</span> {ticket.decision_trace.severity_logic || "N/A"}
+              </div>
+              <div>
+                <span className="font-semibold">Routing logic:</span> {ticket.decision_trace.routing_logic || "N/A"}
+              </div>
+              <div>
+                <span className="font-semibold">Duplicate score:</span> {Number(ticket.decision_trace.duplicate_score || 0).toFixed(2)}
+              </div>
+              <div>
+                <span className="font-semibold">Escalation triggered:</span>{" "}
+                {ticket.decision_trace.escalation_triggered ? "Yes" : "No"}
+              </div>
+            </div>
+          </details>
         ) : null}
       </div>
 

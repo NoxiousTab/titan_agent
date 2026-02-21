@@ -2,24 +2,44 @@ from __future__ import annotations
 
 import os
 from collections import Counter
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ai_engine import triage_ticket
+from ai_engine import load_rulebook, triage_ticket
 from database import Base, engine, get_db
 from escalation import escalate_if_needed
 from models import Ticket
-from schemas import DashboardMetrics, SeedResponse, TicketCreate, TicketOut
+from schemas import DashboardMetrics, SeedResponse, TicketCreate, TicketOut, TicketStatusUpdate
 from seed import seed_demo_tickets
 from similarity import detect_duplicate
 
 load_dotenv()
 
 Base.metadata.create_all(bind=engine)
+
+
+def _migrate_sqlite() -> None:
+    if not str(engine.url).startswith("sqlite"):
+        return
+
+    with engine.connect() as conn:
+        cols = conn.execute(text("PRAGMA table_info(tickets)"))
+        col_names = {row[1] for row in cols.fetchall()}
+        if "lifecycle_status" not in col_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE tickets ADD COLUMN lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'RECEIVED'"
+                )
+            )
+            conn.commit()
+
+
+_migrate_sqlite()
 
 app = FastAPI(
     title="Smart Incident Triage Agent",
@@ -37,7 +57,7 @@ app.add_middleware(
 )
 
 
-def _to_out(ticket: Ticket, ai_reasoning: Optional[str] = None) -> TicketOut:
+def _to_out(ticket: Ticket, ai_reasoning: Optional[str] = None, decision_trace: Optional[Any] = None) -> TicketOut:
     return TicketOut(
         id=ticket.id,
         title=ticket.title,
@@ -53,9 +73,61 @@ def _to_out(ticket: Ticket, ai_reasoning: Optional[str] = None) -> TicketOut:
         similarity_score=ticket.similarity_score,
         escalated=ticket.escalated,
         jira_issue_key=ticket.jira_issue_key,
+        lifecycle_status=ticket.lifecycle_status,
         created_at=ticket.created_at,
         ai_reasoning=ai_reasoning,
+        decision_trace=decision_trace,
     )
+
+
+def _match_any(text_lower: str, phrases: list[str]) -> Optional[str]:
+    for p in phrases:
+        if p and str(p).lower() in text_lower:
+            return str(p)
+    return None
+
+
+def _build_decision_trace(
+    title: str,
+    description: str,
+    assigned_team: str,
+    severity: str,
+    similarity_score: float,
+    escalated: bool,
+    triage_source: Optional[str] = None,
+) -> dict:
+    rb = load_rulebook()
+    text_lower = f"{title}\n{description}".lower()
+
+    override_phrase = _match_any(text_lower, [str(x) for x in (rb.get("overrides", {}).get("p1_phrases", []) or [])])
+
+    routing_rules = (rb.get("routing", {}) or {}).get("rules", {}) or {}
+    routing_keywords = [str(x) for x in (routing_rules.get(assigned_team, []) or [])]
+    routing_match = _match_any(text_lower, routing_keywords)
+
+    signals = (rb.get("severity", {}) or {}).get("signals", {}) or {}
+    severity_keywords = [str(x) for x in (signals.get(severity, []) or [])]
+    severity_match = _match_any(text_lower, severity_keywords)
+
+    if override_phrase:
+        severity_logic = "P1 override"
+        signals_detected = override_phrase
+    elif severity_match:
+        severity_logic = f"Matched {severity} signal"
+        signals_detected = severity_match
+    else:
+        severity_logic = "AI classification"
+        signals_detected = None
+
+    return {
+        "triage_source": triage_source,
+        "signals_detected": signals_detected,
+        "severity_logic": severity_logic,
+        "routing_logic": f"Matched {assigned_team} keywords" if routing_match else f"Defaulted to {assigned_team}",
+        "routing_match": routing_match,
+        "duplicate_score": float(similarity_score),
+        "escalation_triggered": bool(escalated),
+    }
 
 
 @app.get("/tickets", response_model=List[TicketOut])
@@ -74,6 +146,8 @@ def get_ticket(ticket_id: int, db: Session = Depends(get_db)) -> TicketOut:
 
 @app.post("/tickets", response_model=TicketOut)
 def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> TicketOut:
+    reporter = (payload.reporter or "").strip() or "Unknown"
+    department = (payload.department or "").strip() or "Unknown"
     ai = triage_ticket(payload.title, payload.description)
 
     is_dup, dup_id, sim = detect_duplicate(db, payload.title, payload.description, threshold=0.85)
@@ -81,8 +155,8 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
     ticket = Ticket(
         title=payload.title,
         description=payload.description,
-        reporter=payload.reporter,
-        department=payload.department,
+        reporter=reporter,
+        department=department,
         severity=ai["severity"],
         confidence=float(ai["confidence"]),
         assigned_team=ai["assigned_team"],
@@ -92,6 +166,7 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
         similarity_score=float(sim),
         escalated=False,
         jira_issue_key=None,
+        lifecycle_status="TRIAGED",
     )
 
     db.add(ticket)
@@ -100,7 +175,35 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
 
     ticket = escalate_if_needed(db, ticket)
 
-    return _to_out(ticket, ai_reasoning=str(ai.get("reasoning", "")))
+    decision_trace = _build_decision_trace(
+        title=ticket.title,
+        description=ticket.description,
+        assigned_team=ticket.assigned_team,
+        severity=ticket.severity,
+        similarity_score=ticket.similarity_score,
+        escalated=ticket.escalated,
+        triage_source=str(ai.get("triage_source", "")) or None,
+    )
+
+    return _to_out(ticket, ai_reasoning=str(ai.get("reasoning", "")), decision_trace=decision_trace)
+
+
+@app.patch("/tickets/{ticket_id}/status", response_model=TicketOut)
+def update_ticket_status(ticket_id: int, payload: TicketStatusUpdate, db: Session = Depends(get_db)) -> TicketOut:
+    t = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    status = payload.lifecycle_status.strip().upper()
+    allowed = {"RECEIVED", "TRIAGED", "ESCALATED", "RESOLVED"}
+    if status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Invalid lifecycle_status. Allowed: {sorted(allowed)}")
+
+    t.lifecycle_status = status
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return _to_out(t)
 
 
 @app.get("/dashboard/metrics", response_model=DashboardMetrics)
@@ -117,10 +220,16 @@ def dashboard_metrics(db: Session = Depends(get_db)) -> DashboardMetrics:
     by_severity = [{"name": k, "value": int(v)} for k, v in sorted(severity_counts.items())]
     by_team = [{"name": k, "value": int(v)} for k, v in sorted(team_counts.items())]
 
+    prevented = duplicates
+    hours_per_duplicate = float(os.getenv("HOURS_SAVED_PER_DUPLICATE", "1.5"))
+    hours_saved = round(prevented * hours_per_duplicate, 2)
+
     return DashboardMetrics(
         total_tickets=total,
         escalated_tickets=escalated,
         duplicate_tickets=duplicates,
+        duplicate_tickets_prevented=prevented,
+        estimated_engineer_hours_saved=hours_saved,
         by_severity=by_severity,
         by_team=by_team,
     )

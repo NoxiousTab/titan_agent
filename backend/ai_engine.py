@@ -163,6 +163,7 @@ def triage_ticket(title: str, description: str) -> dict:
             "severity": "P1",
             "confidence": 0.99,
             "reasoning": "Rule-based critical override triggered.",
+            "triage_source": "rulebook_override",
             "assigned_team": team,
             "suggested_fixes": _fix_suggestions_rule_based(team, "P1", rulebook),
         }
@@ -176,6 +177,7 @@ def triage_ticket(title: str, description: str) -> dict:
             "severity": severity,
             "confidence": confidence,
             "reasoning": reasoning,
+            "triage_source": "rulebook_no_api_key",
             "assigned_team": team,
             "suggested_fixes": _fix_suggestions_rule_based(team, severity, rulebook),
         }
@@ -199,7 +201,7 @@ Return STRICT JSON ONLY (no markdown, no extra keys) in this schema:
 }}
 
 Constraints:
-- If the text indicates production down/system outage/data breach/security incident => severity must be P1.
+- If the text indicates production down/system outage/data breach/security incident/DoS/DDoS => severity must be P1.
 - confidence must be a float between 0 and 1.
 - reasoning must be <= 25 words.
 - suggested_fixes must contain 3 to 5 short actionable steps.
@@ -236,6 +238,7 @@ Description: {description}
             "severity": severity,
             "confidence": confidence,
             "reasoning": reasoning,
+            "triage_source": "gemini",
             "assigned_team": team,
             "suggested_fixes": suggested_fixes,
         }
@@ -251,6 +254,7 @@ Description: {description}
             "severity": severity,
             "confidence": confidence,
             "reasoning": reasoning,
+            "triage_source": "rulebook_ai_error",
             "assigned_team": team,
             "suggested_fixes": _fix_suggestions_rule_based(team, severity, rulebook),
         }

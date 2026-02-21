@@ -27,10 +27,19 @@ export default function MetricsCards({ metrics }) {
   const p4 = sevMap.P4 || 0;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Card title="Total Tickets" value={metrics.total_tickets} subtitle="All submitted incidents & requests" />
       <Card title="Escalated Tickets" value={metrics.escalated_tickets} subtitle="Auto-escalated P1 incidents" />
-      <Card title="Duplicate Tickets" value={metrics.duplicate_tickets} subtitle="Detected via semantic similarity" />
+      <Card
+        title="Duplicate Tickets Prevented"
+        value={metrics.duplicate_tickets_prevented}
+        subtitle="Detected via semantic similarity"
+      />
+      <Card
+        title="Estimated Engineer Hours Saved"
+        value={metrics.estimated_engineer_hours_saved}
+        subtitle="Heuristic based on prevented duplicates"
+      />
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Severity</div>
         <div className="mt-3 grid gap-2">

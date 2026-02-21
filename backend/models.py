@@ -33,4 +33,6 @@ class Ticket(Base):
     escalated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     jira_issue_key: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False, default="RECEIVED")
+
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

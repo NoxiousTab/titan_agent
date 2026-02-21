@@ -24,6 +24,7 @@ def escalate_if_needed(db: Session, ticket: Ticket) -> Ticket:
         return ticket
 
     ticket.escalated = True
+    ticket.lifecycle_status = "ESCALATED"
 
     labels: List[str] = ["escalated"]
     if ticket.is_duplicate:
