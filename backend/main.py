@@ -14,7 +14,7 @@ from ai_engine import load_rulebook, triage_ticket
 from database import Base, engine, get_db
 from escalation import escalate_if_needed
 from models import Ticket
-from schemas import DashboardMetrics, SeedResponse, TicketCreate, TicketOut, TicketStatusUpdate
+from schemas import DashboardMetrics, JiraClosureWebhook, SeedResponse, TicketCreate, TicketOut, TicketStatusUpdate
 from seed import seed_demo_tickets
 from similarity import detect_duplicate
 
@@ -37,14 +37,24 @@ def _migrate_sqlite() -> None:
                 )
             )
             conn.commit()
+        if "status" not in col_names:
+            conn.execute(
+                text("ALTER TABLE tickets ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open'")
+            )
+            conn.commit()
+        if "resolved_at" not in col_names:
+            conn.execute(
+                text("ALTER TABLE tickets ADD COLUMN resolved_at DATETIME")
+            )
+            conn.commit()
 
 
 _migrate_sqlite()
 
 app = FastAPI(
     title="Smart Incident Triage Agent",
-    version="1.0.0",
-    description="Enterprise-grade AI triage for IT support tickets (severity, routing, duplicates, escalation, Jira, n8n).",
+    version="2.0.0",
+    description="Enterprise-grade AI triage for IT support tickets. V2 ESB architecture — n8n handles orchestration.",
 )
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
@@ -74,6 +84,8 @@ def _to_out(ticket: Ticket, ai_reasoning: Optional[str] = None, decision_trace: 
         escalated=ticket.escalated,
         jira_issue_key=ticket.jira_issue_key,
         lifecycle_status=ticket.lifecycle_status,
+        status=ticket.status,
+        resolved_at=ticket.resolved_at,
         created_at=ticket.created_at,
         ai_reasoning=ai_reasoning,
         decision_trace=decision_trace,
@@ -173,7 +185,8 @@ def create_ticket(payload: TicketCreate, db: Session = Depends(get_db)) -> Ticke
     db.commit()
     db.refresh(ticket)
 
-    ticket = escalate_if_needed(db, ticket)
+    ai_reasoning_str = str(ai.get("reasoning", ""))
+    ticket = escalate_if_needed(db, ticket, ai_reasoning=ai_reasoning_str)
 
     decision_trace = _build_decision_trace(
         title=ticket.title,
@@ -239,3 +252,44 @@ def dashboard_metrics(db: Session = Depends(get_db)) -> DashboardMetrics:
 def seed(db: Session = Depends(get_db)) -> SeedResponse:
     inserted = seed_demo_tickets(db)
     return SeedResponse(inserted=inserted)
+
+
+# ---------------------------------------------------------------------------
+# V2: Webhook endpoint for n8n / Jira closure sync
+# ---------------------------------------------------------------------------
+@app.post("/webhook/jira-closure")
+def jira_closure_webhook(
+    payload: JiraClosureWebhook,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Receive Jira issue closure events forwarded by n8n.
+
+    Updates the local ticket status and resolved_at timestamp.
+    """
+    ticket = (
+        db.query(Ticket)
+        .filter(Ticket.jira_issue_key == payload.jira_issue_key)
+        .first()
+    )
+    if not ticket:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No ticket found with jira_issue_key={payload.jira_issue_key}",
+        )
+
+    from datetime import datetime, timezone
+
+    ticket.status = payload.status
+    ticket.lifecycle_status = "RESOLVED" if payload.status in ("resolved", "closed") else ticket.lifecycle_status
+    ticket.resolved_at = datetime.now(timezone.utc)
+    db.add(ticket)
+    db.commit()
+    db.refresh(ticket)
+
+    return {
+        "ok": True,
+        "ticket_id": ticket.id,
+        "status": ticket.status,
+        "resolved_at": str(ticket.resolved_at),
+        "resolved_by": payload.resolved_by,
+    }

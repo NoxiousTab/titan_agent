@@ -1,15 +1,24 @@
+"""Jira integration — DEPRECATED in V2 Architecture.
+
+In V2, all Jira operations are handled by n8n workflows.
+This module is kept as a legacy stub for backward compatibility.
+The actual Jira issue creation, linking, and commenting is now
+performed by n8n Workflow 1 (Intake, Queueing, and Jira Routing).
+
+See: backend/n8n_workflows/n8n_workflow_1_intake_jira_routing.json
+"""
 from __future__ import annotations
 
-import os
-from typing import Any, Dict, List, Optional
+import logging
+import warnings
+from typing import List, Optional
 
-import requests
+logger = logging.getLogger(__name__)
 
-
-def _configured() -> bool:
-    return all(
-        os.getenv(k, "").strip() for k in ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"]
-    )
+_DEPRECATION_MSG = (
+    "Direct Jira API calls from Python are deprecated in V2. "
+    "Jira operations are now handled by n8n workflows."
+)
 
 
 def create_jira_issue(
@@ -18,46 +27,10 @@ def create_jira_issue(
     priority: str,
     labels: List[str],
 ) -> Optional[str]:
-    if not _configured():
-        return "MOCK-TRIAGE-1"
+    """DEPRECATED: Jira issues are now created by n8n Workflow 1.
 
-    base_url = os.getenv("JIRA_BASE_URL", "").rstrip("/")
-    email = os.getenv("JIRA_EMAIL", "")
-    token = os.getenv("JIRA_API_TOKEN", "")
-    project = os.getenv("JIRA_PROJECT_KEY", "")
-
-    url = f"{base_url}/rest/api/3/issue"
-    payload: Dict[str, Any] = {
-        "fields": {
-            "project": {"key": project},
-            "summary": summary,
-            "description": {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": description}],
-                    }
-                ],
-            },
-            "issuetype": {"name": "Task"},
-            "priority": {"name": priority},
-            "labels": labels,
-        }
-    }
-
-    try:
-        resp = requests.post(
-            url,
-            json=payload,
-            auth=(email, token),
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-            timeout=15,
-        )
-        if resp.status_code >= 300:
-            return "MOCK-TRIAGE-1"
-        data = resp.json()
-        return data.get("key") or "MOCK-TRIAGE-1"
-    except Exception:
-        return "MOCK-TRIAGE-1"
+    This stub returns a mock key for any code that still references it.
+    """
+    warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
+    logger.warning(_DEPRECATION_MSG)
+    return "DEPRECATED-V2"

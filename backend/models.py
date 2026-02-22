@@ -35,4 +35,7 @@ class Ticket(Base):
 
     lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False, default="RECEIVED")
 
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

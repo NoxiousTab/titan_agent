@@ -49,3 +49,8 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# =========================
+# n8n
+# =========================
+backend/n8n_workflows/
