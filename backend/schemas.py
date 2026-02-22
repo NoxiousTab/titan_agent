@@ -35,6 +35,8 @@ class TicketOut(BaseModel):
     escalated: bool
     jira_issue_key: Optional[str] = None
     lifecycle_status: str
+    status: str = "open"
+    resolved_at: Optional[datetime] = None
     created_at: datetime
 
     ai_reasoning: Optional[str] = None
@@ -61,3 +63,10 @@ class SeedResponse(BaseModel):
 
 class TicketStatusUpdate(BaseModel):
     lifecycle_status: str = Field(..., min_length=3, max_length=20)
+
+
+class JiraClosureWebhook(BaseModel):
+    """Payload sent by n8n when a Jira issue is closed/resolved."""
+    jira_issue_key: str = Field(..., min_length=1, description="Jira issue key, e.g. IT-42")
+    status: str = Field(..., description="New status: resolved or closed")
+    resolved_by: Optional[str] = Field(None, description="Person who resolved the issue")

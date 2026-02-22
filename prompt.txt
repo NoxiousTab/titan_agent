@@ -1,0 +1,42 @@
+Act as a Principal Automation Engineer and SOAR Architect. I want to upgrade my current "Smart Incident Triage Agent" MVP to a V2 Enterprise Architecture. 
+
+Please review my current repository, specifically:
+- `backend/escalation.py`
+- `backend/integrations/jira.py`
+- `backend/integrations/n8n.py`
+- `backend/main.py`
+- `backend/models.py`
+
+Right now, my FastAPI backend handles Jira ticket creation directly and then pings n8n for simple alerts. I want to shift to a true ESB (Enterprise Service Bus) model where **n8n handles the stateful orchestration and Jira integrations**, and the Python backend strictly acts as the "Intelligence Core."
+
+Please execute the following updates to achieve the V2 Architecture:
+
+### Step 1: Refactor the Python Backend (Delegate to n8n)
+1. Modify `backend/escalation.py` and `backend/integrations/n8n.py`. Instead of the Python backend creating the Jira issue directly, it should send the *entire* enriched ticket JSON payload (including `severity`, `is_duplicate`, `duplicate_ticket_id`, `ai_reasoning`, `suggested_fixes`, etc.) directly to the n8n webhook. 
+2. Create a new route in `backend/main.py` (e.g., `POST /webhook/jira-closure`) to listen for incoming state changes from n8n/Jira if database syncing is needed.
+
+### Step 2: Design the n8n Workflows (Provide Node Configurations / JSON)
+I need you to generate the exact n8n node logic (as n8n JSON exports or detailed step-by-step node configurations) for the following three workflows:
+
+#### Workflow 1: Intake, Queueing, and Jira Routing (n8n as ESB)
+- **Trigger:** Webhook node receiving the payload from my FastAPI `escalation.py`.
+- **Logic:** - If `is_duplicate: false`: Create a Jira Issue. Map `severity` to Jira `Priority`, and `assigned_team` to Jira `Component`.
+  - Append the `ai_reasoning` and `suggested_fixes` as an internal, private comment on the new Jira ticket for the audit trail.
+  - If `is_duplicate: true`: Do NOT create a new ticket. Use the Jira API node to create a "Linked Issue" (Duplicate) attaching it to the `duplicate_ticket_id`.
+
+#### Workflow 2: Human-in-the-Loop (HITL) via Slack
+- Add a router/switch node in n8n.
+- If the `suggested_fixes` or `severity` implies a high-risk action (e.g., P1 with a specific keyword):
+  - Pause the workflow (Wait Node).
+  - Send an interactive Slack message (using Block Kit) to an IT Manager channel with the ticket details and "Approve" / "Deny" buttons.
+  - Resume the workflow based on the Slack interaction.
+
+#### Workflow 3: Bi-Directional Jira Sync (Closure Loop)
+- Create a new n8n workflow triggered by a Jira Webhook ("Issue Closed" / "Issue Resolved").
+- Parse the Jira payload to find the original reporter.
+- Send an automated Slack message to the reporter confirming resolution, and optionally ping our FastAPI backend to update the SQLite database status.
+
+### Deliverables Expected:
+1. The refactored Python code for the backend files.
+2. The n8n workflow JSONs (or highly detailed node-by-node instructions) for Workflows 1, 2, and 3.
+3. The Slack Block Kit JSON structure for the HITL buttons. 
